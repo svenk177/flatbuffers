@@ -34,6 +34,7 @@
 #include "namespace_test/namespace_test2_generated.h"
 #include "union_vector/union_vector_generated.h"
 #include "monster_extra_generated.h"
+#include "arrays_test_generated.h"
 #include "test_assert.h"
 
 #include "flatbuffers/flexbuffers.h"
@@ -1159,6 +1160,15 @@ void FuzzTest2() {
         case flatbuffers::BASE_TYPE_BOOL:
           AddToSchemaAndInstances(
               "bool", deprecated ? "" : (lcg_rand() % 2 ? "true" : "false"));
+          break;
+        case flatbuffers::BASE_TYPE_ARRAY:
+          if (!is_struct) {
+            AddToSchemaAndInstances("ubyte",
+              deprecated ? "" : "255");  // No fixed-length arrays in tables.
+          } else {
+            AddToSchemaAndInstances("[int:3]",
+              deprecated ? "" : "[\n,\n,\n]");
+          }
           break;
         default:
           // All the scalar types.
@@ -2611,6 +2621,23 @@ void CreateSharedStringTest() {
   TEST_EQ((*a[6]) < (*a[5]), true);
 }
 
+void FixedLengthArrayTest() {
+  flatbuffers::FlatBufferBuilder fbb;
+  int array[15];
+  for (int i = 0; i < 15; i++) array[i] = i + 1;
+  MyGame::Example::ArrayStruct aStruct(2, array, 12);
+  auto aTable = MyGame::Example::CreateArrayTable(fbb, &aStruct);
+  fbb.Finish(aTable);
+  auto p = MyGame::Example::GetMutableArrayTable(fbb.GetBufferPointer());
+  auto mArStruct = p->mutable_a();
+  mArStruct->mutable_b()[14] = -14;
+  TEST_EQ(mArStruct->a(), 2);
+  TEST_EQ(mArStruct->b_length(), 15);
+  TEST_EQ(mArStruct->c(), 12);
+  TEST_EQ(mArStruct->b()[14], -14);
+  for (int i = 0; i < 14; i++) TEST_EQ(mArStruct->b()[i], i + 1);
+}
+
 int FlatBufferTests() {
   // clang-format off
 
@@ -2686,6 +2713,7 @@ int FlatBufferTests() {
   IsAsciiUtilsTest();
   ValidFloatTest();
   InvalidFloatTest();
+  FixedLengthArrayTest();
   return 0;
 }
 

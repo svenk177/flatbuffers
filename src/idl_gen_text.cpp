@@ -99,6 +99,29 @@ bool PrintVector(const Vector<T> &v, Type type, int indent,
   return true;
 }
 
+// Print an array a sequence of JSON values, comma separated, wrapped in "[]".
+template<typename T>
+bool PrintArray(const T *v, size_t size, Type type, int indent,
+                const IDLOptions &opts, std::string *_text) {
+  std::string &text = *_text;
+  text += "[";
+  text += NewLine(opts);
+  for (uoffset_t i = 0; i < size; i++) {
+    if (i) {
+      if (!opts.protobuf_ascii_alike) text += ",";
+      text += NewLine(opts);
+    }
+    text.append(indent + Indent(opts), ' ');
+    if (!Print(v[i], type, indent + Indent(opts), nullptr, opts, _text)) {
+        return false;
+    }
+  }
+  text += NewLine(opts);
+  text.append(indent, ' ');
+  text += "]";
+  return true;
+}
+
 // Specialization of Print above for pointer types.
 template<>
 bool Print<const void *>(const void *val, Type type, int indent,
@@ -144,6 +167,27 @@ bool Print<const void *>(const void *val, Type type, int indent,
         // clang-format on
       }
       break;
+    case BASE_TYPE_ARRAY: {
+        // Call PrintVector above specifically for each element type:
+        switch (type.VectorType().base_type) {
+            // clang-format off
+            #define FLATBUFFERS_TD(ENUM, IDLTYPE, \
+            CTYPE, JTYPE, GTYPE, NTYPE, PTYPE, RTYPE) \
+            case BASE_TYPE_ ## ENUM: \
+                if (!PrintArray<CTYPE>( \
+                    reinterpret_cast<const CTYPE *>(val), type.fixed_length, \
+                    type, indent, opts, _text)) { \
+                return false; \
+                } \
+                break;
+            FLATBUFFERS_GEN_TYPES_SCALAR(FLATBUFFERS_TD)
+            #undef FLATBUFFERS_TD
+            // clang-format on
+            // Can't have non-scalar types in an array
+            default: FLATBUFFERS_ASSERT(0);
+        }
+      }
+      break;
     default: FLATBUFFERS_ASSERT(0);
   }
   return true;
@@ -177,8 +221,8 @@ static bool GenFieldOffset(const FieldDef &fd, const Table *table, bool fixed,
                            std::string *_text) {
   const void *val = nullptr;
   if (fixed) {
-    // The only non-scalar fields in structs are structs.
-    FLATBUFFERS_ASSERT(IsStruct(fd.value.type));
+    // The only non-scalar fields in structs are structs or arrays.
+    FLATBUFFERS_ASSERT(IsStruct(fd.value.type) || IsArray(fd.value.type));
     val = reinterpret_cast<const Struct *>(table)->GetStruct<const void *>(
         fd.value.offset);
   } else if (fd.flexbuffer) {
@@ -241,6 +285,7 @@ static bool GenStruct(const StructDef &struct_def, const Table *table,
           CTYPE, JTYPE, GTYPE, NTYPE, PTYPE, RTYPE) \
           case BASE_TYPE_ ## ENUM:
           FLATBUFFERS_GEN_TYPES_POINTER(FLATBUFFERS_TD)
+          FLATBUFFERS_GEN_TYPE_ARRAY(FLATBUFFERS_TD)
         #undef FLATBUFFERS_TD
             if (!GenFieldOffset(fd, table, struct_def.fixed, indent + Indent(opts),
                                 union_type, opts, _text)) {

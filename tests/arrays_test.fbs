@@ -1,0 +1,22 @@
+namespace MyGame.Example;
+
+struct ArrayStruct{
+	a:float;
+	b:[int:15];
+	c:byte;
+}
+
+struct TestStruct{
+    a:uint8;
+    b:[uint16:21];
+    c:[uint32:2];
+    d:[double:3];
+    e:uint16;
+}
+
+table ArrayTable{
+	a:ArrayStruct;
+    b:TestStruct;
+}
+
+root_type ArrayTable;

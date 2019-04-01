@@ -21,6 +21,7 @@ set -e
 ../flatc -b --schema --bfbs-comments --bfbs-builtins -I include_test monster_test.fbs
 ../flatc --jsonschema --schema -I include_test monster_test.fbs
 ../flatc --cpp --java --csharp --python --gen-mutable --reflect-names --gen-object-api --gen-compare --no-includes monster_extra.fbs || goto FAIL
+../flatc --cpp --gen-mutable arrays_test.fbs || goto FAIL
 cd ../samples
 ../flatc --cpp --lobster --gen-mutable --reflect-names --gen-object-api --gen-compare --cpp-ptr-type flatbuffers::unique_ptr monster.fbs
 ../flatc -b --schema --bfbs-comments --bfbs-builtins monster.fbs

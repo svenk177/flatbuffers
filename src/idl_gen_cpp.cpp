@@ -662,6 +662,8 @@ class CppGenerator : public BaseGenerator {
                          bool user_facing_type) {
     if (IsScalar(type.base_type)) {
       return GenTypeBasic(type, user_facing_type) + afterbasic;
+    } else if (IsArray(type)) {
+      return beforeptr + GenTypeBasic(type.VectorType(), user_facing_type) + afterptr;
     } else {
       return beforeptr + GenTypePointer(type) + afterptr;
     }
@@ -2673,7 +2675,8 @@ class CppGenerator : public BaseGenerator {
       code_.SetValue("FIELD_TYPE",
                      GenTypeGet(field.value.type, " ", "", " ", false));
       code_.SetValue("FIELD_NAME", Name(field));
-      code_ += "  {{FIELD_TYPE}}{{FIELD_NAME}}_;";
+      code_.SetValue("ARRAY", IsArray(field.value.type) ? "[" + NumToString<short>(field.value.type.fixed_length) + "]" : "");
+      code_ += ("  {{FIELD_TYPE}}{{FIELD_NAME}}_{{ARRAY}};");
 
       if (field.padding) {
         std::string padding;
@@ -2711,21 +2714,28 @@ class CppGenerator : public BaseGenerator {
       const auto member_name = Name(field) + "_";
       const auto arg_name = "_" + Name(field);
       const auto arg_type =
-          GenTypeGet(field.value.type, " ", "const ", " &", true);
+          GenTypeGet(field.value.type, " ", "const ",
+                     IsArray(field.value.type) ? " *" : " &", true);
 
       if (it != struct_def.fields.vec.begin()) {
         arg_list += ", ";
-        init_list += ",\n        ";
       }
       arg_list += arg_type;
       arg_list += arg_name;
-      init_list += member_name;
-      if (IsScalar(field.value.type.base_type)) {
-        auto type = GenUnderlyingCast(field, false, arg_name);
-        init_list += "(flatbuffers::EndianScalar(" + type + "))";
-      } else {
-        init_list += "(" + arg_name + ")";
+
+      if (!IsArray(field.value.type)) {
+        if (it != struct_def.fields.vec.begin()) {
+            init_list += ",\n        ";
+        }
+        init_list += member_name;
+        if (IsScalar(field.value.type.base_type)) {
+          auto type = GenUnderlyingCast(field, false, arg_name);
+          init_list += "(flatbuffers::EndianScalar(" + type + "))";
+        } else {
+          init_list += "(" + arg_name + ")";
+        }
       }
+
       if (field.padding) {
         GenPadding(field, &init_list, &padding_id, PaddingInitializer);
       }
@@ -2734,12 +2744,19 @@ class CppGenerator : public BaseGenerator {
     if (!arg_list.empty()) {
       code_.SetValue("ARG_LIST", arg_list);
       code_.SetValue("INIT_LIST", init_list);
-      code_ += "  {{STRUCT_NAME}}({{ARG_LIST}})";
-      code_ += "      : {{INIT_LIST}} {";
+      if (!init_list.empty()) {
+        code_ += "  {{STRUCT_NAME}}({{ARG_LIST}})";
+        code_ += "      : {{INIT_LIST}} {";
+      } else {  
+        code_ += "  {{STRUCT_NAME}}({{ARG_LIST}}) {";
+      }
       padding_id = 0;
       for (auto it = struct_def.fields.vec.begin();
            it != struct_def.fields.vec.end(); ++it) {
         const auto &field = **it;
+        if (IsArray(field.value.type)) {
+          code_ += "    memcpy(" + field.name + "_, _" + field.name + ", " + NumToString(InlineSize(field.value.type)) + ");";
+        }
         if (field.padding) {
           std::string padding;
           GenPadding(field, &padding, &padding_id, PaddingNoop);
@@ -2755,7 +2772,8 @@ class CppGenerator : public BaseGenerator {
          it != struct_def.fields.vec.end(); ++it) {
       const auto &field = **it;
 
-      auto field_type = GenTypeGet(field.value.type, " ", "const ", " &", true);
+      auto field_type = GenTypeGet(field.value.type, " ", "const ",
+                                   IsArray(field.value.type) ? " *" : " &", true);
       auto is_scalar = IsScalar(field.value.type.base_type);
       auto member = Name(field) + "_";
       auto value =
@@ -2770,8 +2788,15 @@ class CppGenerator : public BaseGenerator {
       code_ += "    return {{FIELD_VALUE}};";
       code_ += "  }";
 
+      if (IsArray(field.value.type)) {
+        code_ += "  int16_t " + field.name + "_length() const { ";
+        code_ += "    return " + NumToString(field.value.type.fixed_length) + ";";
+        code_ += "  }";
+      }
+
       if (parser_.opts.mutable_buffer) {
-        auto mut_field_type = GenTypeGet(field.value.type, " ", "", " &", true);
+        auto mut_field_type = GenTypeGet(field.value.type, " ", "",
+                                         IsArray(field.value.type) ? " *" : " &", true);
         code_.SetValue("FIELD_TYPE", mut_field_type);
         if (is_scalar) {
           code_.SetValue("ARG", GenTypeBasic(field.value.type, true));
