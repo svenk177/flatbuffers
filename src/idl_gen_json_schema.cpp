@@ -42,6 +42,7 @@ std::string GenNativeType(BaseType type) {
     case BASE_TYPE_FLOAT:
     case BASE_TYPE_DOUBLE: return "number";
     case BASE_TYPE_STRING: return "string";
+    case BASE_TYPE_ARRAY: return "array";
     default: return "";
   }
 }
@@ -156,8 +157,17 @@ class JsonSchemaGenerator : public BaseGenerator {
       const auto &properties = structure->fields.vec;
       for (auto prop = properties.cbegin(); prop != properties.cend(); ++prop) {
         const auto &property = *prop;
-        std::string typeLine("        \"" + property->name + "\" : { " +
-                             GenType(property->value.type) + " }");
+
+        std::string arrayInfo = "";
+        if (IsArray(property->value.type)) {
+            arrayInfo = ",\n                \"minItems\": " + NumToString<short>(property->value.type.fixed_length) + ",\n" +
+                        "                \"maxItems\": " + NumToString<short>(property->value.type.fixed_length) + ",\n" +
+                        "                \"items\": { \"type\": \"number\" }";
+        }
+        std::string typeLine("        \"" + property->name + "\" : {\n" +
+                             "                " + GenType(property->value.type) +
+                             arrayInfo +
+                             "\n              }");
         if (property != properties.back()) { typeLine.append(","); }
         code_ += typeLine;
       }
