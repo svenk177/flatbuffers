@@ -145,6 +145,7 @@ std::string FlatCompiler::GetUsageString(const char *program_name) const {
     "  --reflect-names    Add minimal type/name reflection.\n"
     "  --root-type T      Select or override the default root_type\n"
     "  --force-defaults   Emit default values in binary output from JSON\n"
+    "  --force-required   Marks every field as required\n"
     "  --force-empty      When serializing from object API representation,\n"
     "                     force strings and vectors to empty rather than null.\n"
     "FILEs may be schemas (must end in .fbs), binary schemas (must end in .bfbs),\n"
@@ -313,6 +314,8 @@ int FlatCompiler::Compile(int argc, const char **argv) {
         opts.root_type = argv[argi];
       } else if (arg == "--force-defaults") {
         opts.force_defaults = true;
+      } else if (arg == "--force-required") {
+        opts.force_required = true;
       } else if (arg == "--force-empty") {
         opts.set_empty_to_null = false;
       } else {
