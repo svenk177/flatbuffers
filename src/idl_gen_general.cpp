@@ -312,7 +312,9 @@ class GeneralGenerator : public BaseGenerator {
   }
 
   std::string GenTypeGet(const Type &type) const {
-    return IsScalar(type.base_type) ? GenTypeBasic(type) : GenTypePointer(type);
+    return (IsScalar(type.base_type)) ? GenTypeBasic(type)
+                                      : IsArray(type) ? GenTypeBasic(type.VectorType()) + " []"
+                                      : GenTypePointer(type);
   }
 
   // Find the destination type the user wants to receive the value in (e.g.
@@ -604,6 +606,7 @@ class GeneralGenerator : public BaseGenerator {
       case BASE_TYPE_STRUCT: return lang_.accessor_prefix + "__struct";
       case BASE_TYPE_UNION: return lang_.accessor_prefix + "__union";
       case BASE_TYPE_VECTOR: return GenGetter(type.VectorType());
+      case BASE_TYPE_ARRAY: return GenGetter(type.VectorType());
       default: {
         std::string getter =
             lang_.accessor_prefix + "bb." + FunctionStart('G') + "et";
@@ -670,8 +673,11 @@ class GeneralGenerator : public BaseGenerator {
         GenStructArgs(*field.value.type.struct_def, code_ptr,
                       (nameprefix + (field.name + "_")).c_str());
       } else {
+        auto type = IsArray(field.value.type) ? field.value.type.VectorType()
+                                              : DestinationType(field.value.type, false);
         code += ", ";
-        code += GenTypeBasic(DestinationType(field.value.type, false));
+        code += GenTypeBasic(type);
+        if (IsArray(field.value.type)) code += " []";
         code += " ";
         code += nameprefix;
         code += MakeCamel(field.name, lang_.first_camel_upper);
@@ -699,12 +705,19 @@ class GeneralGenerator : public BaseGenerator {
         GenStructBody(*field.value.type.struct_def, code_ptr,
                       (nameprefix + (field.name + "_")).c_str());
       } else {
+        auto type = field.value.type;
+        if (IsArray(field.value.type)) {
+          code += "    for (int i = ";
+          code += NumToString(field.value.type.fixed_length);
+          code += "; i > 0; i--)\n  ";
+          type = type.VectorType();
+        }
         code += "    builder." + FunctionStart('P') + "ut";
-        code += GenMethod(field.value.type) + "(";
-        code += SourceCast(field.value.type);
+        code += GenMethod(type) + "(";
+        code += SourceCast(type);
         auto argname =
             nameprefix + MakeCamel(field.name, lang_.first_camel_upper);
-        code += argname;
+        code += argname + (IsArray(field.value.type) ? "[i-1]" : "");
         code += ");\n";
       }
     }
@@ -980,6 +993,19 @@ class GeneralGenerator : public BaseGenerator {
           code += " : " + default_cast;
           code += GenDefaultValue(field);
         }
+      } else if (IsArray(field.value.type)) {
+        std::string type = GenTypeBasic(field.value.type.VectorType());
+        code += lang_.getter_prefix;
+        member_suffix += lang_.getter_suffix;
+        code += " { " + type + " [] b = new " + type + "[" + NumToString(field.value.type.fixed_length) + "]; ";
+        code += "for (int i = 0; i < ";
+        code += NumToString(field.value.type.fixed_length);
+        code += "; i++) { b[i] = " + getter;
+        code += "(" + lang_.accessor_prefix + "bb_pos + ";
+        code += NumToString(field.value.offset);
+        code += " + i * " + NumToString(InlineSize(field.value.type.VectorType())) + "); }";
+        code += " return b";
+        code += dest_mask;
       } else {
         switch (field.value.type.base_type) {
           case BASE_TYPE_STRUCT:
